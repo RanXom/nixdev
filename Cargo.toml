@@ -1,0 +1,23 @@
+[package]
+name = "nixdev"
+version = "0.1.0"
+edition = "2024"
+description = "Interactive dev-shell flake generator for Nix"
+license = "MIT"
+repository = "https://github.com/ranxom/nixdev"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+clap_complete = "4"
+flate2 = "1"
+fs2 = "0.4"
+ratatui = "0.30"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+signal-hook = "0.3"
+unicode-width = "0.2"
+
+[profile.release]
+lto = true
+strip = true
+panic = "abort"
