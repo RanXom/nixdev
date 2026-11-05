@@ -65,6 +65,15 @@ fn run_init(args: InitArgs, out: &Out) -> i32 {
 }
 
 fn init_inner(args: InitArgs, out: &Out) -> Result<(), String> {
+    let interactive =
+        std::io::stdin().is_terminal() && std::io::stdout().is_terminal() && !args.yes;
+
+    if !interactive && !args.yes && !args.print && !args.dry_run {
+        return Err(
+            "prompts need a terminal here; pass --yes to accept the defaults without asking".into(),
+        );
+    }
+
     let plan = build_plan(&args, out)?;
 
     if args.print {
@@ -86,17 +95,8 @@ fn init_inner(args: InitArgs, out: &Out) -> Result<(), String> {
 
     let opts = pipeline_options(&args);
 
-    let interactive =
-        std::io::stdin().is_terminal() && std::io::stdout().is_terminal() && !args.yes;
-
     if interactive {
         return wizard::run(plan, opts, out, !args.no_index, !args.no_validate);
-    }
-
-    if !args.yes {
-        return Err(
-            "prompts need a terminal here; pass --yes to accept the defaults without asking".into(),
-        );
     }
 
     run_headless(&plan, &opts, out, !args.no_validate)
