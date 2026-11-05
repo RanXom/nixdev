@@ -13,7 +13,11 @@ pub fn run(out: &Out) -> i32 {
     let mut failures = 0;
     let mut check = |ok: bool, label: &str, detail: String, fatal: bool| {
         if ok {
-            println!("  {} {label:<26} {}", theme::ansi_fg(out.mode(), theme::SUCCESS, "✓"), detail);
+            println!(
+                "  {} {label:<26} {}",
+                theme::ansi_fg(out.mode(), theme::SUCCESS, "✓"),
+                detail
+            );
         } else {
             let symbol = if fatal { "✗" } else { "!" };
             let color = if fatal { theme::ERROR } else { theme::WARN };
@@ -35,7 +39,11 @@ pub fn run(out: &Out) -> i32 {
 
     let flakes = nix::run(
         &nix::nix_bin(),
-        &["config".into(), "show".into(), "experimental-features".into()],
+        &[
+            "config".into(),
+            "show".into(),
+            "experimental-features".into(),
+        ],
         None,
         std::time::Duration::from_secs(15),
     )

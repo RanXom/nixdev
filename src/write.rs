@@ -45,16 +45,11 @@ fn io_err(context: impl Into<String>) -> impl FnOnce(io::Error) -> WriteError {
 
 pub struct WriteReport {
     pub path: PathBuf,
-    pub created: bool,
     pub backup: Option<PathBuf>,
     pub via_symlink: bool,
 }
 
-pub fn write_atomic(
-    path: &Path,
-    contents: &str,
-    backup: bool,
-) -> Result<WriteReport, WriteError> {
+pub fn write_atomic(path: &Path, contents: &str, backup: bool) -> Result<WriteReport, WriteError> {
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
     let parent = if parent.as_os_str().is_empty() {
         Path::new(".")
@@ -98,24 +93,21 @@ pub fn write_atomic(
             let _ = file.set_permissions(mode);
         }
         drop(file);
-        fs::rename(&temp, &target).map_err(io_err(format!(
-            "could not move `{}` into place",
-            file_name
-        )))?;
+        fs::rename(&temp, &target)
+            .map_err(io_err(format!("could not move `{}` into place", file_name)))?;
         if let Ok(dir) = fs::File::open(target_parent) {
             let _ = dir.sync_all();
         }
         Ok(())
     })();
 
-    if result.is_err() {
+    if let Err(err) = result {
         let _ = fs::remove_file(&temp);
-        return Err(result.unwrap_err());
+        return Err(err);
     }
 
     Ok(WriteReport {
         path: target,
-        created: !via_symlink,
         backup: backup_path,
         via_symlink,
     })
@@ -126,7 +118,11 @@ fn resolve_target(path: &Path) -> Result<(PathBuf, bool), WriteError> {
         Ok(meta) if meta.file_type().is_symlink() => {
             let link = fs::read_link(path).map_err(io_err("could not read symlink"))?;
             let base = path.parent().unwrap_or_else(|| Path::new("."));
-            let resolved = if link.is_absolute() { link } else { base.join(link) };
+            let resolved = if link.is_absolute() {
+                link
+            } else {
+                base.join(link)
+            };
             let target = resolved
                 .canonicalize()
                 .map_err(|_| WriteError::BrokenSymlink(path.to_path_buf()))?;
@@ -220,8 +216,7 @@ impl DirLock {
     fn acquire(dir: &Path) -> Result<Self, WriteError> {
         let path = lock_path(dir);
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)
-                .map_err(io_err("could not create the lock directory"))?;
+            fs::create_dir_all(parent).map_err(io_err("could not create the lock directory"))?;
         }
         let file = fs::OpenOptions::new()
             .write(true)
@@ -285,7 +280,10 @@ pub fn intent_to_add(dir: &Path, file: &str) -> Result<(), String> {
         .arg(dir)
         .args(["ls-files", "--error-unmatch", "--", file])
         .output();
-    if tracked.map(|output| output.status.success()).unwrap_or(false) {
+    if tracked
+        .map(|output| output.status.success())
+        .unwrap_or(false)
+    {
         return Ok(());
     }
     let output = std::process::Command::new("git")
@@ -396,10 +394,7 @@ mod tests {
         let second = write_atomic(&path, "two\n", true).unwrap();
         assert!(second.backup.is_some());
         assert_eq!(fs::read_to_string(&path).unwrap(), "two\n");
-        assert_eq!(
-            fs::read_to_string(second.backup.unwrap()).unwrap(),
-            "one\n"
-        );
+        assert_eq!(fs::read_to_string(second.backup.unwrap()).unwrap(), "one\n");
         fs::remove_dir_all(dir).unwrap();
     }
 

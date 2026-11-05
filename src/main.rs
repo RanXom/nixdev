@@ -9,17 +9,16 @@ mod profile;
 mod render;
 mod theme;
 mod util;
+mod wizard;
 mod write;
 
-use std::ffi::OsString;
 use std::io::{IsTerminal, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::Duration;
 
 use clap::{CommandFactory, Parser};
 
 use crate::cli::{Cli, Command, InitArgs};
-use crate::nix::NixError;
 use crate::output::Out;
 use crate::plan::Plan;
 use crate::theme::ColorMode;
@@ -33,9 +32,10 @@ fn real_main() -> i32 {
     let cli = Cli::parse();
     let mode = ColorMode::detect(cli.no_color);
     let out = Out::new(mode);
-    let command = match cli.command {
-        Some(command) => command,
-        None => Command::Init(InitArgs::defaults()),
+    let command = match (cli.dir, cli.command) {
+        (Some(dir), _) => Command::Init(InitArgs::in_dir(dir)),
+        (None, Some(command)) => command,
+        (None, None) => Command::Init(InitArgs::defaults()),
     };
 
     match command {
@@ -86,12 +86,17 @@ fn init_inner(args: InitArgs, out: &Out) -> Result<(), String> {
 
     let opts = pipeline_options(&args);
 
-    let interactive = std::io::stdin().is_terminal()
-        && std::io::stdout().is_terminal()
-        && !args.yes;
+    let interactive =
+        std::io::stdin().is_terminal() && std::io::stdout().is_terminal() && !args.yes;
 
     if interactive {
-        return run_headless(&plan, &opts, out, false);
+        return wizard::run(plan, opts, out, !args.no_index, !args.no_validate);
+    }
+
+    if !args.yes {
+        return Err(
+            "prompts need a terminal here; pass --yes to accept the defaults without asking".into(),
+        );
     }
 
     run_headless(&plan, &opts, out, !args.no_validate)
@@ -122,9 +127,8 @@ fn run_headless(
 fn build_plan(args: &InitArgs, out: &Out) -> Result<Plan, String> {
     if !args.dir.exists() {
         if !args.print && !args.dry_run {
-            std::fs::create_dir_all(&args.dir).map_err(|err| {
-                format!("could not create `{}`: {err}", args.dir.display())
-            })?;
+            std::fs::create_dir_all(&args.dir)
+                .map_err(|err| format!("could not create `{}`: {err}", args.dir.display()))?;
         }
     } else if !args.dir.is_dir() {
         return Err(format!("`{}` is not a directory", args.dir.display()));
@@ -158,15 +162,15 @@ fn build_plan(args: &InitArgs, out: &Out) -> Result<Plan, String> {
     let mut plan = plan.normalize()?;
 
     let reference = args.nixpkgs.as_deref().unwrap_or("nixpkgs");
-    if args.print || args.dry_run {
+    let pinned = if args.print || args.dry_run {
         eprintln!("nixdev: resolving {reference}");
+        nix::resolve_nixpkgs(reference).map_err(|err| err.to_string())?
     } else {
-        out.started(&format!("resolving {reference}"));
-    }
-    let pinned = nix::resolve_nixpkgs(reference).map_err(|err| err.to_string())?;
-    if !(args.print || args.dry_run) {
-        out.clear_line();
-    }
+        out.spin(&format!("resolving {reference}"), || {
+            nix::resolve_nixpkgs(reference)
+        })
+        .map_err(|err| err.to_string())?
+    };
     plan.rev = pinned.rev.clone();
     plan.nixpkgs_url = if reference == "nixpkgs" {
         format!("github:NixOS/nixpkgs/{}", pinned.rev)
@@ -192,35 +196,10 @@ fn pipeline_options(args: &InitArgs) -> pipeline::Options {
 }
 
 fn check_packages(plan: &Plan, out: &Out) -> Vec<String> {
-    let spec = plan.to_spec();
-    if spec.packages.is_empty() {
+    if plan.to_spec().packages.is_empty() {
         return Vec::new();
     }
-    let mut warnings = Vec::new();
-    out.started("checking packages");
-    for system in &plan.systems {
-        if nix::is_canceled() {
-            break;
-        }
-        match nix::system_supported(system) {
-            Ok(false) => warnings.push(format!("nixpkgs does not support the system `{system}`")),
-            Ok(true) => match nix::has_attrs(system, &spec.packages) {
-                Ok(results) => {
-                    for (pkg, exists) in spec.packages.iter().zip(results) {
-                        if !exists {
-                            warnings.push(format!("`{pkg}` is not available on {system}"));
-                        }
-                    }
-                }
-                Err(NixError::Canceled) => break,
-                Err(err) => warnings.push(format!("could not verify packages on {system}: {err}")),
-            },
-            Err(NixError::Canceled) => break,
-            Err(err) => warnings.push(format!("could not check the system `{system}`: {err}")),
-        }
-    }
-    out.clear_line();
-    warnings
+    out.spin("checking packages", || plan::package_warnings(plan))
 }
 
 fn run_add(args: cli::AddArgs, out: &Out) -> i32 {
@@ -306,25 +285,21 @@ fn search_inner(args: cli::SearchArgs, out: &Out) -> Result<(), String> {
     let system = nix::current_system();
     let mut entries = Vec::new();
 
-    if !args.live {
-        if let Ok(pinned) = nix::resolve_nixpkgs("nixpkgs") {
-            if let Some(index) = index::load(&pinned.rev, &system) {
-                entries = index
-                    .search(&term, limit)
-                    .into_iter()
-                    .cloned()
-                    .collect();
-            } else {
-                out.started(&format!("indexing nixpkgs for {system}"));
-                match index::load_or_build(&pinned.rev, &system) {
-                    Ok(index) => {
-                        out.clear_line();
-                        entries = index.search(&term, limit).into_iter().cloned().collect();
-                    }
-                    Err(err) => {
-                        out.clear_line();
-                        out.warn(&format!("could not build the index: {err}"));
-                    }
+    if !args.live
+        && let Ok(pinned) = nix::resolve_nixpkgs("nixpkgs")
+    {
+        if let Some(index) = index::load(&pinned.rev, &system) {
+            entries = index.search(&term, limit).into_iter().cloned().collect();
+        } else {
+            out.started(&format!("indexing nixpkgs for {system}"));
+            match index::load_or_build(&pinned.rev, &system) {
+                Ok(index) => {
+                    out.clear_line();
+                    entries = index.search(&term, limit).into_iter().cloned().collect();
+                }
+                Err(err) => {
+                    out.clear_line();
+                    out.warn(&format!("could not build the index: {err}"));
                 }
             }
         }
@@ -359,8 +334,18 @@ fn search_inner(args: cli::SearchArgs, out: &Out) -> Result<(), String> {
             .max(20);
         println!(
             "  {} {} {}",
-            theme::ansi_fg(out.mode(), theme::ACCENT, &format!("{:<attr_width$}", util::truncate(&entry.attr, attr_width))),
-            theme::ansi_dim(out.mode(), &format!("{:<version_width$}", util::truncate(&entry.version, version_width))),
+            theme::ansi_fg(
+                out.mode(),
+                theme::ACCENT,
+                &format!("{:<attr_width$}", util::truncate(&entry.attr, attr_width))
+            ),
+            theme::ansi_dim(
+                out.mode(),
+                &format!(
+                    "{:<version_width$}",
+                    util::truncate(&entry.version, version_width)
+                )
+            ),
             util::truncate(&entry.description, description_width)
         );
     }
@@ -387,9 +372,11 @@ fn index_inner(args: cli::IndexArgs, out: &Out) -> Result<(), String> {
     let system = args.system.unwrap_or_else(nix::current_system);
     let rev = match args.rev {
         Some(rev) => rev,
-        None => nix::resolve_nixpkgs("nixpkgs")
-            .map_err(|err| err.to_string())?
-            .rev,
+        None => {
+            nix::resolve_nixpkgs("nixpkgs")
+                .map_err(|err| err.to_string())?
+                .rev
+        }
     };
     if !args.refresh && index::is_cached(&rev, &system) {
         out.info(&format!(
@@ -425,22 +412,14 @@ fn install_signal_handlers() {
     #[cfg(unix)]
     {
         use signal_hook::consts::{SIGHUP, SIGINT, SIGQUIT, SIGTERM};
-        if let Ok(mut signals) = signal_hook::iterator::Signals::new([SIGINT, SIGTERM, SIGHUP, SIGQUIT])
+        if let Ok(mut signals) =
+            signal_hook::iterator::Signals::new([SIGINT, SIGTERM, SIGHUP, SIGQUIT])
         {
             std::thread::spawn(move || {
-                for _ in signals.forever() {
-                    nix::cancel_all();
-                    std::process::exit(130);
-                }
+                let _ = signals.forever().next();
+                nix::cancel_all();
+                std::process::exit(130);
             });
         }
     }
-}
-
-#[allow(dead_code)]
-fn executable_name() -> OsString {
-    std::env::args_os()
-        .next()
-        .and_then(|arg| PathBuf::from(arg).file_name().map(|n| n.to_os_string()))
-        .unwrap_or_else(|| OsString::from("nixdev"))
 }

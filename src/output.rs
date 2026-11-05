@@ -1,4 +1,7 @@
 use std::io::{self, IsTerminal, Write};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::thread;
 use std::time::Duration;
 
 use crate::pipeline::{Report, Status, StepResult};
@@ -24,6 +27,41 @@ impl Out {
 
     pub fn is_interactive(&self) -> bool {
         self.interactive
+    }
+
+    pub fn spin<T>(&self, label: &str, task: impl FnOnce() -> T) -> T {
+        if !self.interactive {
+            return task();
+        }
+        const FRAMES: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+        let frames: Vec<String> = FRAMES
+            .iter()
+            .map(|frame| self.paint(theme::ACCENT, frame))
+            .collect();
+        let label = label.to_string();
+        let suffix = self.dim("…");
+        let done = Arc::new(AtomicBool::new(false));
+        let flag = done.clone();
+        let handle = thread::spawn(move || {
+            let mut stdout = io::stdout();
+            let mut step = 0usize;
+            while !flag.load(Ordering::Relaxed) {
+                let _ = write!(
+                    stdout,
+                    "\r\x1b[2K  {} {label}{suffix}",
+                    frames[step % frames.len()]
+                );
+                let _ = stdout.flush();
+                step += 1;
+                thread::sleep(Duration::from_millis(80));
+            }
+            let _ = write!(stdout, "\r\x1b[2K");
+            let _ = stdout.flush();
+        });
+        let result = task();
+        done.store(true, Ordering::Relaxed);
+        let _ = handle.join();
+        result
     }
 
     fn paint(&self, rgb: (u8, u8, u8), text: &str) -> String {
@@ -134,18 +172,25 @@ impl Out {
             self.paint(theme::SUCCESS, "flake ready"),
             self.dim(&format!("in {}", format_duration(report.elapsed)))
         );
-        println!("  {}{}", self.dim("file      "), report.path.display());
+        println!(
+            "  {}{}",
+            self.dim("file      "),
+            report
+                .path
+                .canonicalize()
+                .unwrap_or_else(|_| report.path.clone())
+                .display()
+        );
         if let Some(backup) = &report.backup {
             println!("  {}{}", self.dim("backup    "), backup.display());
         }
         if report.git_initialized {
-            println!("  {}{}", self.dim("git       "), "repository created");
+            println!("  {} repository created", self.dim("git       "));
         }
-        println!(
-            "  {}{}",
-            self.dim("next      "),
-            format!("cd {} && nix develop", report.path.parent().unwrap_or(&report.path).display())
-        );
+        let dir = report.path.parent().unwrap_or(&report.path);
+        let dir = dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf());
+        let next = format!("cd {} && nix develop", dir.display());
+        println!("  {}{}", self.dim("next      "), next);
         println!();
     }
 
@@ -160,6 +205,7 @@ impl Out {
     }
 
     pub fn next_steps(&self, dir: &std::path::Path) {
+        let dir = dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf());
         println!(
             "  {}",
             self.dim(&format!(
@@ -177,7 +223,11 @@ pub fn format_duration(duration: Duration) -> String {
     } else if secs < 60.0 {
         format!("{secs:.1}s")
     } else {
-        format!("{}m{:02}s", duration.as_secs() / 60, duration.as_secs() % 60)
+        format!(
+            "{}m{:02}s",
+            duration.as_secs() / 60,
+            duration.as_secs() % 60
+        )
     }
 }
 

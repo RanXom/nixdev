@@ -21,14 +21,30 @@ pub const PROFILES: &[Profile] = &[
         id: "c",
         label: "C",
         blurb: "gcc, make, cmake, gdb, clangd",
-        packages: &["gcc", "gnumake", "cmake", "pkg-config", "gdb", "clang-tools", "ccache"],
+        packages: &[
+            "gcc",
+            "gnumake",
+            "cmake",
+            "pkg-config",
+            "gdb",
+            "clang-tools",
+            "ccache",
+        ],
         env: &[("LIBCLANG_PATH", "\"${pkgs.llvmPackages.libclang.lib}/lib\"")],
     },
     Profile {
         id: "cpp",
         label: "C++",
         blurb: "gcc, make, cmake, gdb, clangd",
-        packages: &["gcc", "gnumake", "cmake", "pkg-config", "gdb", "clang-tools", "ccache"],
+        packages: &[
+            "gcc",
+            "gnumake",
+            "cmake",
+            "pkg-config",
+            "gdb",
+            "clang-tools",
+            "ccache",
+        ],
         env: &[("LIBCLANG_PATH", "\"${pkgs.llvmPackages.libclang.lib}/lib\"")],
     },
     Profile {
@@ -84,14 +100,26 @@ pub const PROFILES: &[Profile] = &[
         id: "haskell",
         label: "Haskell",
         blurb: "ghc, cabal, HLS, hlint, ormolu",
-        packages: &["ghc", "cabal-install", "haskell-language-server", "hlint", "ormolu"],
+        packages: &[
+            "ghc",
+            "cabal-install",
+            "haskell-language-server",
+            "hlint",
+            "ormolu",
+        ],
         env: &[],
     },
     Profile {
         id: "java",
         label: "Java",
         blurb: "jdk21, gradle, maven, jdtls",
-        packages: &["jdk21", "gradle", "maven", "jdt-language-server", "google-java-format"],
+        packages: &[
+            "jdk21",
+            "gradle",
+            "maven",
+            "jdt-language-server",
+            "google-java-format",
+        ],
         env: &[],
     },
     Profile {
@@ -119,7 +147,12 @@ pub const PROFILES: &[Profile] = &[
         id: "ocaml",
         label: "OCaml",
         blurb: "ocaml, dune, ocaml-lsp, utop",
-        packages: &["ocaml", "dune", "ocamlPackages.ocaml-lsp", "ocamlPackages.utop"],
+        packages: &[
+            "ocaml",
+            "dune",
+            "ocamlPackages.ocaml-lsp",
+            "ocamlPackages.utop",
+        ],
         env: &[],
     },
     Profile {
@@ -401,7 +434,9 @@ pub fn detect_shell() -> String {
     }
 }
 
-pub const SHELLS: &[&str] = &["fish", "zsh", "bash", "nu", "elvish", "xonsh", "tcsh", "dash"];
+pub const SHELLS: &[&str] = &[
+    "fish", "zsh", "bash", "nu", "elvish", "xonsh", "tcsh", "dash",
+];
 
 #[cfg(test)]
 mod tests {

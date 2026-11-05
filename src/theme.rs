@@ -1,7 +1,5 @@
 use std::env;
 
-use ratatui::style::Color;
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ColorMode {
     TrueColor,
@@ -42,44 +40,6 @@ impl ColorMode {
     }
 }
 
-pub struct Theme {
-    pub accent: Color,
-    pub accent2: Color,
-    pub success: Color,
-    pub warn: Color,
-    pub error: Color,
-    pub text: Color,
-    pub muted: Color,
-    pub border: Color,
-    pub surface: Color,
-    pub highlight: Color,
-}
-
-pub fn theme(mode: ColorMode) -> Theme {
-    let adapt = |rgb| adapt(mode, rgb);
-    Theme {
-        accent: adapt((0x7a, 0xa2, 0xf7)),
-        accent2: adapt((0xbb, 0x9a, 0xf7)),
-        success: adapt((0x9e, 0xce, 0x6a)),
-        warn: adapt((0xe0, 0xaf, 0x68)),
-        error: adapt((0xf7, 0x76, 0x8e)),
-        text: adapt((0xc0, 0xca, 0xf5)),
-        muted: adapt((0x56, 0x5f, 0x89)),
-        border: adapt((0x3b, 0x42, 0x61)),
-        surface: adapt((0x1a, 0x1b, 0x26)),
-        highlight: adapt((0x29, 0x2e, 0x42)),
-    }
-}
-
-pub fn adapt(mode: ColorMode, rgb: (u8, u8, u8)) -> Color {
-    match mode {
-        ColorMode::TrueColor => Color::Rgb(rgb.0, rgb.1, rgb.2),
-        ColorMode::Ansi256 => Color::Indexed(to_xterm256(rgb)),
-        ColorMode::Ansi16 => Color::Indexed(to_xterm16(rgb)),
-        ColorMode::None => Color::Reset,
-    }
-}
-
 pub fn hsl(h: f32, s: f32, l: f32) -> (u8, u8, u8) {
     let h = h.rem_euclid(360.0) / 360.0;
     let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
@@ -117,7 +77,11 @@ pub fn to_xterm256(rgb: (u8, u8, u8)) -> u8 {
     let cube_rgb = (cube_level(ri), cube_level(gi), cube_level(bi));
 
     let avg = (rgb.0 as u16 + rgb.1 as u16 + rgb.2 as u16) / 3;
-    let gray_index = if avg > 238 { 23 } else { ((avg.saturating_sub(3)) / 10) };
+    let gray_index = if avg > 238 {
+        23
+    } else {
+        avg.saturating_sub(3) / 10
+    };
     let gray_index = gray_index.min(23) as u8;
     let level = 8 + gray_index * 10;
     let gray_rgb = (level, level, level);

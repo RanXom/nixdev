@@ -83,7 +83,6 @@ impl From<io::Error> for NixError {
 
 pub struct RunOutput {
     pub stdout: String,
-    pub stderr: String,
 }
 
 pub fn nix_bin() -> String {
@@ -173,7 +172,7 @@ pub fn run(
                 let stderr = read_lossy(&err_path);
                 drop(cleanup);
                 if status.success() {
-                    return Ok(RunOutput { stdout, stderr });
+                    return Ok(RunOutput { stdout });
                 }
                 return Err(NixError::Failed {
                     command: format!("{program} {}", args.join(" ")),
@@ -250,8 +249,6 @@ struct MetaJson {
 #[derive(Deserialize)]
 struct LockedJson {
     rev: Option<String>,
-    #[serde(rename = "lastModified")]
-    last_modified: Option<i64>,
 }
 
 pub struct Pinned {
@@ -371,12 +368,7 @@ pub fn parse_file(path: &Path) -> Result<Option<String>, NixError> {
         return Ok(None);
     }
     let args = vec!["--parse".to_string(), path.display().to_string()];
-    match run(
-        "nix-instantiate",
-        &args,
-        None,
-        Duration::from_secs(30),
-    ) {
+    match run("nix-instantiate", &args, None, Duration::from_secs(30)) {
         Ok(_) => Ok(None),
         Err(NixError::Canceled) => Err(NixError::Canceled),
         Err(NixError::Failed { stderr, .. }) => Ok(Some(stderr)),

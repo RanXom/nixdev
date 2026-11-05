@@ -5,6 +5,7 @@ use clap::{Args, Parser, Subcommand};
 #[derive(Parser, Debug)]
 #[command(
     name = "nixdev",
+    args_conflicts_with_subcommands = true,
     version,
     about = "Generate Nix dev-shell flakes without the guesswork",
     long_about = "nixdev asks a few questions, then writes a pinned flake.nix with the toolchains, \
@@ -13,6 +14,10 @@ use clap::{Args, Parser, Subcommand};
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Command>,
+
+    /// Project directory; shorthand for `nixdev init DIR`
+    #[arg(value_name = "DIR")]
+    pub dir: Option<PathBuf>,
 
     #[arg(long, global = true, help = "Disable colour output")]
     pub no_color: bool,
@@ -185,6 +190,12 @@ pub struct IndexArgs {
 }
 
 impl InitArgs {
+    pub fn in_dir(dir: PathBuf) -> Self {
+        let mut args = Self::defaults();
+        args.dir = dir;
+        args
+    }
+
     pub fn defaults() -> Self {
         Self {
             dir: std::path::PathBuf::from("."),

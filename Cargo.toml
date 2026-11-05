@@ -9,10 +9,10 @@ repository = "https://github.com/ranxom/nixdev"
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 clap_complete = "4"
+crossterm = "0.29"
 flate2 = "1"
 fs2 = "0.4"
 libc = "0.2"
-ratatui = "0.30"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 signal-hook = "0.3"

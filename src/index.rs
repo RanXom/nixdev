@@ -107,7 +107,7 @@ pub fn load(rev: &str, system: &str) -> Option<Index> {
     let mut text = String::new();
     decoder.read_to_string(&mut text).ok()?;
     let index: Index = serde_json::from_str(&text).ok()?;
-    if index.rev != rev || index.system != system || index.entries.is_empty() {
+    if index.rev != rev || index.system != system || index.is_empty() {
         return None;
     }
     Some(index)

@@ -118,6 +118,36 @@ impl Plan {
     }
 }
 
+pub fn package_warnings(plan: &Plan) -> Vec<String> {
+    let spec = plan.to_spec();
+    if spec.packages.is_empty() {
+        return Vec::new();
+    }
+    let mut warnings = Vec::new();
+    for system in &plan.systems {
+        if crate::nix::is_canceled() {
+            break;
+        }
+        match crate::nix::system_supported(system) {
+            Ok(false) => warnings.push(format!("nixpkgs does not support the system `{system}`")),
+            Ok(true) => match crate::nix::has_attrs(system, &spec.packages) {
+                Ok(results) => {
+                    for (pkg, exists) in spec.packages.iter().zip(results) {
+                        if !exists {
+                            warnings.push(format!("`{pkg}` is not available on {system}"));
+                        }
+                    }
+                }
+                Err(crate::nix::NixError::Canceled) => break,
+                Err(err) => warnings.push(format!("could not verify packages on {system}: {err}")),
+            },
+            Err(crate::nix::NixError::Canceled) => break,
+            Err(err) => warnings.push(format!("could not check the system `{system}`: {err}")),
+        }
+    }
+    warnings
+}
+
 pub fn validate_languages(ids: &[String]) -> Result<(), String> {
     let unknown: Vec<&String> = ids
         .iter()
@@ -168,7 +198,9 @@ mod tests {
 
     #[test]
     fn reuses_project_names_and_defaults_shell() {
-        let plan = Plan::seed(PathBuf::from("/tmp/my-project")).normalize().unwrap();
+        let plan = Plan::seed(PathBuf::from("/tmp/my-project"))
+            .normalize()
+            .unwrap();
         assert_eq!(plan.name, "my-project");
         assert!(!plan.systems.is_empty());
         assert!(!plan.shell.is_empty());

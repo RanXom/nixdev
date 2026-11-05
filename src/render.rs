@@ -68,7 +68,10 @@ pub fn render(spec: &Spec) -> String {
     out.push_str(&header(spec, &title));
 
     out.push_str("{\n");
-    out.push_str(&format!("  description = \"{}\";\n\n", escape_string(&title)));
+    out.push_str(&format!(
+        "  description = \"{}\";\n\n",
+        escape_string(&title)
+    ));
 
     out.push_str("  inputs = {\n");
     if !spec.nixpkgs_note.is_empty() {
@@ -111,22 +114,28 @@ pub fn render(spec: &Spec) -> String {
         out.push_str("            };\n");
     }
 
-    if let Some(shell) = &spec.shell_pkg {
-        if let Some(binary) = shell_binary(shell) {
-            out.push_str("\n            shellHook = ''\n");
-            out.push_str("              # hand off to your own shell; nix develop -c still works\n");
-            out.push_str("              if [[ $- == *i* ]] && [[ -z \"''${NIXDEV_SHELL_ACTIVE:-}\" ]]; then\n");
-            out.push_str("                export NIXDEV_SHELL_ACTIVE=1\n");
-            out.push_str(&format!("                exec ${{pkgs.{shell}}}/bin/{binary}\n"));
-            out.push_str("              fi\n");
-            out.push_str("            '';\n");
-        }
+    if let Some(shell) = &spec.shell_pkg
+        && let Some(binary) = shell_binary(shell)
+    {
+        out.push_str("\n            shellHook = ''\n");
+        out.push_str("              # hand off to your own shell; nix develop -c still works\n");
+        out.push_str(
+            "              if [[ $- == *i* ]] && [[ -z \"''${NIXDEV_SHELL_ACTIVE:-}\" ]]; then\n",
+        );
+        out.push_str("                export NIXDEV_SHELL_ACTIVE=1\n");
+        out.push_str(&format!(
+            "                exec ${{pkgs.{shell}}}/bin/{binary}\n"
+        ));
+        out.push_str("              fi\n");
+        out.push_str("            '';\n");
     }
 
     out.push_str("          };\n");
     out.push_str("        }\n");
     out.push_str("      );\n\n");
-    out.push_str("      formatter = eachSystem (system: nixpkgs.legacyPackages.${system}.nixfmt);\n");
+    out.push_str(
+        "      formatter = eachSystem (system: nixpkgs.legacyPackages.${system}.nixfmt);\n",
+    );
     out.push_str("    };\n");
     out.push_str("}\n");
     out

@@ -50,6 +50,7 @@ pub struct StepResult {
     pub elapsed: Duration,
 }
 
+#[derive(Clone)]
 pub struct Options {
     pub allow_overwrite: bool,
     pub backup: bool,
@@ -178,7 +179,9 @@ pub fn run<F: FnMut(Event)>(plan: &Plan, opts: &Options, mut sink: F) -> Result<
                     step_started,
                 );
                 rollback(&path, previous.as_deref(), existed);
-                return Err("the generated flake is not valid Nix; the previous file was restored".into());
+                return Err(
+                    "the generated flake is not valid Nix; the previous file was restored".into(),
+                );
             }
             Err(NixError::Canceled) => return Err("cancelled".into()),
             Err(err) => finish(
@@ -197,11 +200,7 @@ pub fn run<F: FnMut(Event)>(plan: &Plan, opts: &Options, mut sink: F) -> Result<
         let step_started = Instant::now();
         match write::append_gitignore(
             &plan.dir,
-            &[
-                ".direnv/",
-                ".nixdev.tmp.*",
-                "flake.nix.nixdev-backup-*",
-            ],
+            &[".direnv/", ".nixdev.tmp.*", "flake.nix.nixdev-backup-*"],
         ) {
             Ok(true) => {
                 report.gitignore_updated = true;

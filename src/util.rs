@@ -100,10 +100,10 @@ pub fn fuzzy_score(haystack: &str, needle: &str) -> Option<i32> {
         }
         let idx = found?;
         score += 10;
-        if let Some(prev) = last_match {
-            if idx == prev + 1 {
-                score += 15;
-            }
+        if let Some(prev) = last_match
+            && idx == prev + 1
+        {
+            score += 15;
         }
         if idx == 0 || hay[idx - 1] == '-' || hay[idx - 1] == '_' || hay[idx - 1] == '.' {
             score += 20;
@@ -133,19 +133,6 @@ pub fn truncate(text: &str, width: usize) -> String {
     }
     out.push('…');
     out
-}
-
-pub fn ellipsize_middle(text: &str, width: usize) -> String {
-    if text.width() <= width || width < 8 {
-        return truncate(text, width);
-    }
-    let keep = width - 1;
-    let front = keep / 2;
-    let back = keep - front;
-    let chars: Vec<char> = text.chars().collect();
-    let start: String = chars.iter().take(front).collect();
-    let end: String = chars.iter().skip(chars.len() - back).collect();
-    format!("{start}…{end}")
 }
 
 #[cfg(test)]
