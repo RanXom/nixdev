@@ -114,21 +114,7 @@ pub fn render(spec: &Spec) -> String {
         out.push_str("            };\n");
     }
 
-    if let Some(shell) = &spec.shell_pkg
-        && let Some(binary) = shell_binary(shell)
-    {
-        out.push_str("\n            shellHook = ''\n");
-        out.push_str("              # hand off to your own shell; nix develop -c still works\n");
-        out.push_str(
-            "              if [[ $- == *i* ]] && [[ -z \"''${NIXDEV_SHELL_ACTIVE:-}\" ]]; then\n",
-        );
-        out.push_str("                export NIXDEV_SHELL_ACTIVE=1\n");
-        out.push_str(&format!(
-            "                exec ${{pkgs.{shell}}}/bin/{binary}\n"
-        ));
-        out.push_str("              fi\n");
-        out.push_str("            '';\n");
-    }
+    out.push_str(&shell_hook(spec));
 
     out.push_str("          };\n");
     out.push_str("        }\n");
@@ -138,6 +124,74 @@ pub fn render(spec: &Spec) -> String {
     );
     out.push_str("    };\n");
     out.push_str("}\n");
+    out
+}
+
+fn shell_hook(spec: &Spec) -> String {
+    let mut out = String::with_capacity(2048);
+    out.push_str("\n            shellHook = ''\n");
+    out.push_str(
+        "              # nixdev: greet interactive shells only; `nix develop -c` stays quiet\n",
+    );
+    out.push_str(
+        "              if [[ $- == *i* ]] && [[ -z \"''${NIXDEV_SHELL_ACTIVE:-}\" ]]; then\n",
+    );
+    out.push_str("                export NIXDEV_SHELL_ACTIVE=1\n\n");
+    out.push_str("                # Mute a fastfetch greeting from the user's shell rc.\n");
+    out.push_str(
+        "                nixdev_shim=\"''${TMPDIR:-/tmp}/nixdev-shim-''${USER:-user}\"\n",
+    );
+    out.push_str("                mkdir -p \"''$nixdev_shim\"\n");
+    out.push_str(
+        "                printf '#!/bin/sh\\nexit 0\\n' > \"''$nixdev_shim/fastfetch\"\n",
+    );
+    out.push_str("                chmod +x \"''$nixdev_shim/fastfetch\"\n");
+    out.push_str("                case \":''$PATH:\" in\n");
+    out.push_str("                  *\":''$nixdev_shim:\"*) ;;\n");
+    out.push_str("                  *) export PATH=\"''$nixdev_shim:''$PATH\" ;;\n");
+    out.push_str("                esac\n\n");
+    out.push_str("                # Clean slate, then the nixdev banner.\n");
+    out.push_str("                clear 2>/dev/null || printf '\\033[2J\\033[H'\n");
+    out.push_str("                printf '\\n'\n");
+    out.push_str(
+        "                printf '\\033[38;2;122;162;247m  \u{256d}\u{2500} nixdev \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{256e}\\033[0m\\n'\n",
+    );
+
+    let accent = "\\033[38;2;122;162;247m";
+    let reset = "\\033[0m";
+    let mut rows: Vec<String> = Vec::new();
+    rows.push(format!("\\033[1m{}{}", spec.meta.project, reset));
+    let languages = if spec.meta.languages.is_empty() {
+        "no languages selected".to_string()
+    } else {
+        spec.meta.languages.join(" \u{00b7} ")
+    };
+    rows.push(languages);
+    rows.push("type `exit` to leave the shell".to_string());
+    for row in rows {
+        let row = row.replace('\'', "");
+        out.push_str("                printf '");
+        out.push_str(accent);
+        out.push_str("  \u{2502}");
+        out.push_str(reset);
+        out.push_str("  ");
+        out.push_str(&row);
+        out.push_str("\\n'\n");
+    }
+    out.push_str(
+        "                printf '\\033[38;2;122;162;247m  \u{2570}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{256f}\\033[0m\\n'\n",
+    );
+    out.push_str("                printf '\\n'\n");
+
+    if let Some(shell) = &spec.shell_pkg
+        && let Some(binary) = shell_binary(shell)
+    {
+        out.push_str(&format!(
+            "                exec ${{pkgs.{shell}}}/bin/{binary}\n"
+        ));
+    }
+    out.push_str("              fi\n");
+    out.push_str("            '';\n");
     out
 }
 

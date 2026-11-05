@@ -7,6 +7,7 @@ use clap::{Args, Parser, Subcommand};
     name = "nixdev",
     args_conflicts_with_subcommands = true,
     version,
+    disable_version_flag = true,
     about = "Generate Nix dev-shell flakes without the guesswork",
     long_about = "nixdev asks a few questions, then writes a pinned flake.nix with the toolchains, \
                   language servers and packages you picked. Run it with no arguments to start."
@@ -21,6 +22,10 @@ pub struct Cli {
 
     #[arg(long, global = true, help = "Disable colour output")]
     pub no_color: bool,
+
+    /// Print version information
+    #[arg(short = 'v', long = "version", action = clap::ArgAction::Version)]
+    pub version: bool,
 }
 
 #[derive(Subcommand, Debug)]

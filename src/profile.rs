@@ -183,8 +183,15 @@ pub struct Extra {
     pub label: &'static str,
     pub blurb: &'static str,
     pub category: &'static str,
+    /// Languages this tool is useful for; empty means every project.
+    pub languages: &'static [&'static str],
     pub packages: &'static [&'static str],
 }
+
+const DEBUGGERS: &[&str] = &["c", "cpp", "rust", "zig"];
+const BACKENDS: &[&str] = &[
+    "python", "node", "ruby", "elixir", "go", "java", "kotlin", "ocaml", "dotnet",
+];
 
 pub const EXTRAS: &[Extra] = &[
     Extra {
@@ -192,6 +199,7 @@ pub const EXTRAS: &[Extra] = &[
         label: "gdb",
         blurb: "GNU debugger",
         category: "debugging",
+        languages: DEBUGGERS,
         packages: &["gdb"],
     },
     Extra {
@@ -199,6 +207,7 @@ pub const EXTRAS: &[Extra] = &[
         label: "lldb",
         blurb: "LLVM debugger",
         category: "debugging",
+        languages: DEBUGGERS,
         packages: &["lldb"],
     },
     Extra {
@@ -206,6 +215,7 @@ pub const EXTRAS: &[Extra] = &[
         label: "valgrind",
         blurb: "memory error detector",
         category: "debugging",
+        languages: DEBUGGERS,
         packages: &["valgrind"],
     },
     Extra {
@@ -213,6 +223,7 @@ pub const EXTRAS: &[Extra] = &[
         label: "strace / ltrace",
         blurb: "syscall and library call tracers",
         category: "debugging",
+        languages: DEBUGGERS,
         packages: &["strace", "ltrace"],
     },
     Extra {
@@ -220,6 +231,7 @@ pub const EXTRAS: &[Extra] = &[
         label: "sqlite",
         blurb: "embedded SQL database and CLI",
         category: "databases",
+        languages: BACKENDS,
         packages: &["sqlite"],
     },
     Extra {
@@ -227,6 +239,7 @@ pub const EXTRAS: &[Extra] = &[
         label: "postgresql",
         blurb: "PostgreSQL client and server",
         category: "databases",
+        languages: BACKENDS,
         packages: &["postgresql"],
     },
     Extra {
@@ -234,6 +247,7 @@ pub const EXTRAS: &[Extra] = &[
         label: "redis",
         blurb: "in-memory data store and CLI",
         category: "databases",
+        languages: BACKENDS,
         packages: &["redis"],
     },
     Extra {
@@ -241,6 +255,7 @@ pub const EXTRAS: &[Extra] = &[
         label: "mariadb",
         blurb: "MySQL-compatible server and client",
         category: "databases",
+        languages: BACKENDS,
         packages: &["mariadb"],
     },
     Extra {
@@ -248,6 +263,7 @@ pub const EXTRAS: &[Extra] = &[
         label: "docker client",
         blurb: "docker CLI against a local daemon",
         category: "containers",
+        languages: &[],
         packages: &["docker-client"],
     },
     Extra {
@@ -255,6 +271,7 @@ pub const EXTRAS: &[Extra] = &[
         label: "podman",
         blurb: "daemonless container engine",
         category: "containers",
+        languages: &[],
         packages: &["podman"],
     },
     Extra {
@@ -262,6 +279,7 @@ pub const EXTRAS: &[Extra] = &[
         label: "kubectl / helm",
         blurb: "Kubernetes CLI and package manager",
         category: "containers",
+        languages: &[],
         packages: &["kubectl", "kubernetes-helm"],
     },
     Extra {
@@ -269,6 +287,7 @@ pub const EXTRAS: &[Extra] = &[
         label: "k9s",
         blurb: "terminal UI for Kubernetes",
         category: "containers",
+        languages: &[],
         packages: &["k9s"],
     },
     Extra {
@@ -276,6 +295,7 @@ pub const EXTRAS: &[Extra] = &[
         label: "just",
         blurb: "command runner",
         category: "build",
+        languages: &[],
         packages: &["just"],
     },
     Extra {
@@ -283,6 +303,7 @@ pub const EXTRAS: &[Extra] = &[
         label: "ninja / meson",
         blurb: "fast build system and its meta-build tool",
         category: "build",
+        languages: &["c", "cpp", "rust"],
         packages: &["ninja", "meson"],
     },
     Extra {
@@ -290,6 +311,7 @@ pub const EXTRAS: &[Extra] = &[
         label: "curl / wget",
         blurb: "HTTP clients",
         category: "network",
+        languages: &[],
         packages: &["curl", "wget"],
     },
     Extra {
@@ -297,6 +319,7 @@ pub const EXTRAS: &[Extra] = &[
         label: "httpie / grpcurl",
         blurb: "human-friendly HTTP and gRPC clients",
         category: "network",
+        languages: &[],
         packages: &["httpie", "grpcurl"],
     },
     Extra {
@@ -304,6 +327,7 @@ pub const EXTRAS: &[Extra] = &[
         label: "jq / yq",
         blurb: "JSON and YAML processors",
         category: "network",
+        languages: &[],
         packages: &["jq", "yq"],
     },
     Extra {
@@ -311,6 +335,7 @@ pub const EXTRAS: &[Extra] = &[
         label: "pandoc",
         blurb: "document converter",
         category: "docs",
+        languages: &[],
         packages: &["pandoc"],
     },
     Extra {
@@ -318,6 +343,7 @@ pub const EXTRAS: &[Extra] = &[
         label: "tectonic",
         blurb: "self-contained LaTeX engine",
         category: "docs",
+        languages: &[],
         packages: &["tectonic"],
     },
     Extra {
@@ -325,6 +351,7 @@ pub const EXTRAS: &[Extra] = &[
         label: "graphviz",
         blurb: "graph visualization tools",
         category: "docs",
+        languages: &[],
         packages: &["graphviz"],
     },
     Extra {
@@ -332,6 +359,7 @@ pub const EXTRAS: &[Extra] = &[
         label: "ffmpeg",
         blurb: "audio and video toolkit",
         category: "media",
+        languages: &[],
         packages: &["ffmpeg"],
     },
     Extra {
@@ -339,6 +367,7 @@ pub const EXTRAS: &[Extra] = &[
         label: "imagemagick",
         blurb: "image conversion and editing",
         category: "media",
+        languages: &[],
         packages: &["imagemagick"],
     },
     Extra {
@@ -346,6 +375,7 @@ pub const EXTRAS: &[Extra] = &[
         label: "neovim",
         blurb: "modal text editor",
         category: "editors",
+        languages: &[],
         packages: &["neovim"],
     },
     Extra {
@@ -353,9 +383,168 @@ pub const EXTRAS: &[Extra] = &[
         label: "helix",
         blurb: "post-modern modal editor",
         category: "editors",
+        languages: &[],
         packages: &["helix"],
     },
+    Extra {
+        id: "cargo-watch",
+        label: "cargo watch",
+        blurb: "rebuild and rerun on change",
+        category: "rust",
+        languages: &["rust"],
+        packages: &["cargo-watch"],
+    },
+    Extra {
+        id: "nextest",
+        label: "cargo nextest",
+        blurb: "faster test runner",
+        category: "rust",
+        languages: &["rust"],
+        packages: &["cargo-nextest"],
+    },
+    Extra {
+        id: "cargo-audit",
+        label: "cargo audit",
+        blurb: "scan dependencies for advisories",
+        category: "rust",
+        languages: &["rust"],
+        packages: &["cargo-audit"],
+    },
+    Extra {
+        id: "bear",
+        label: "bear",
+        blurb: "generate compile_commands.json",
+        category: "c/c++",
+        languages: &["c", "cpp"],
+        packages: &["bear"],
+    },
+    Extra {
+        id: "cppcheck",
+        label: "cppcheck",
+        blurb: "static analysis for C and C++",
+        category: "c/c++",
+        languages: &["c", "cpp"],
+        packages: &["cppcheck"],
+    },
+    Extra {
+        id: "ipython",
+        label: "ipython",
+        blurb: "interactive Python REPL",
+        category: "python",
+        languages: &["python"],
+        packages: &["python3Packages.ipython"],
+    },
+    Extra {
+        id: "pytest",
+        label: "pytest",
+        blurb: "test runner",
+        category: "python",
+        languages: &["python"],
+        packages: &["python3Packages.pytest"],
+    },
+    Extra {
+        id: "golangci-lint",
+        label: "golangci-lint",
+        blurb: "meta linter for Go",
+        category: "go",
+        languages: &["go"],
+        packages: &["golangci-lint"],
+    },
+    Extra {
+        id: "bun",
+        label: "bun",
+        blurb: "fast JS runtime and package manager",
+        category: "javascript",
+        languages: &["node"],
+        packages: &["bun"],
+    },
+    Extra {
+        id: "nix-tree",
+        label: "nix-tree",
+        blurb: "explore store closures",
+        category: "nix",
+        languages: &["nix"],
+        packages: &["nix-tree"],
+    },
+    Extra {
+        id: "nom",
+        label: "nix-output-monitor",
+        blurb: "readable nix build output",
+        category: "nix",
+        languages: &["nix"],
+        packages: &["nix-output-monitor"],
+    },
+    Extra {
+        id: "luarocks",
+        label: "luarocks",
+        blurb: "Lua package manager",
+        category: "lua",
+        languages: &["lua"],
+        packages: &["luarocks"],
+    },
+    Extra {
+        id: "ghcid",
+        label: "ghcid",
+        blurb: "reload GHCi on file changes",
+        category: "haskell",
+        languages: &["haskell"],
+        packages: &["ghcid"],
+    },
+    Extra {
+        id: "gradle",
+        label: "gradle",
+        blurb: "build automation for the JVM",
+        category: "jvm",
+        languages: &["java", "kotlin"],
+        packages: &["gradle"],
+    },
+    Extra {
+        id: "merlin",
+        label: "merlin",
+        blurb: "editor integration for OCaml",
+        category: "ocaml",
+        languages: &["ocaml"],
+        packages: &["ocamlPackages.merlin"],
+    },
+    Extra {
+        id: "shellharden",
+        label: "shellharden",
+        blurb: "writes safer shell scripts",
+        category: "shell",
+        languages: &["shell"],
+        packages: &["shellharden"],
+    },
+    Extra {
+        id: "terraform-docs",
+        label: "terraform-docs",
+        blurb: "generate module documentation",
+        category: "terraform",
+        languages: &["terraform"],
+        packages: &["terraform-docs"],
+    },
 ];
+
+/// Extras that match the chosen languages, grouped in language order.
+pub fn extras_for(languages: &[String]) -> Vec<(&'static str, &'static Extra)> {
+    let mut out: Vec<(&'static str, &'static Extra)> = Vec::new();
+    for language in languages {
+        let Some(profile) = profile(language) else {
+            continue;
+        };
+        for extra in EXTRAS {
+            if extra.languages.contains(&language.as_str())
+                && !out.iter().any(|(_, picked)| picked.id == extra.id)
+            {
+                out.push((profile.label, extra));
+            }
+        }
+    }
+    out
+}
+
+pub fn general_extras() -> impl Iterator<Item = &'static Extra> {
+    EXTRAS.iter().filter(|extra| extra.languages.is_empty())
+}
 
 pub fn profile(id: &str) -> Option<&'static Profile> {
     PROFILES.iter().find(|p| p.id == id)
