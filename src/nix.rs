@@ -271,8 +271,8 @@ pub fn resolve_nixpkgs(flake: &str) -> Result<Pinned, NixError> {
     })
 }
 
-pub fn live_search(term: &str, timeout: Duration) -> Result<Vec<Entry>, NixError> {
-    let args = nix_args(&["search", "nixpkgs", term, "--json"]);
+pub fn live_search(flake: &str, term: &str, timeout: Duration) -> Result<Vec<Entry>, NixError> {
+    let args = nix_args(&["search", flake, term, "--json"]);
     let out = run(&nix_bin(), &args, None, timeout)?;
     let raw: serde_json::Value = serde_json::from_str(&out.stdout)
         .map_err(|err| NixError::Parse(format!("could not parse search results: {err}")))?;
@@ -318,7 +318,7 @@ pub fn current_system() -> String {
     format!("{mapped_arch}-{mapped_os}")
 }
 
-pub fn has_attrs(system: &str, attrs: &[String]) -> Result<Vec<bool>, NixError> {
+pub fn has_attrs(flake: &str, system: &str, attrs: &[String]) -> Result<Vec<bool>, NixError> {
     if attrs.is_empty() {
         return Ok(Vec::new());
     }
@@ -339,7 +339,7 @@ pub fn has_attrs(system: &str, attrs: &[String]) -> Result<Vec<bool>, NixError> 
     let args = nix_args(&[
         "eval",
         "--json",
-        &format!("nixpkgs#legacyPackages.{system}"),
+        &format!("{flake}#legacyPackages.{system}"),
         "--apply",
         &expr,
     ]);
@@ -348,11 +348,11 @@ pub fn has_attrs(system: &str, attrs: &[String]) -> Result<Vec<bool>, NixError> 
         .map_err(|err| NixError::Parse(format!("could not parse attribute check: {err}")))
 }
 
-pub fn system_supported(system: &str) -> Result<bool, NixError> {
+pub fn system_supported(flake: &str, system: &str) -> Result<bool, NixError> {
     let args = nix_args(&[
         "eval",
         "--json",
-        &format!("nixpkgs#legacyPackages.{system}"),
+        &format!("{flake}#legacyPackages.{system}"),
         "--apply",
         "pkgs: builtins.isAttrs pkgs",
     ]);

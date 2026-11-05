@@ -124,13 +124,21 @@ pub fn package_warnings(plan: &Plan) -> Vec<String> {
         return Vec::new();
     }
     let mut warnings = Vec::new();
+
+    let flake = if plan.nixpkgs_url.is_empty() {
+        "nixpkgs"
+    } else {
+        plan.nixpkgs_url.as_str()
+    };
+
     for system in &plan.systems {
         if crate::nix::is_canceled() {
             break;
         }
-        match crate::nix::system_supported(system) {
+
+        match crate::nix::system_supported(flake, system) {
             Ok(false) => warnings.push(format!("nixpkgs does not support the system `{system}`")),
-            Ok(true) => match crate::nix::has_attrs(system, &spec.packages) {
+            Ok(true) => match crate::nix::has_attrs(flake, system, &spec.packages) {
                 Ok(results) => {
                     for (pkg, exists) in spec.packages.iter().zip(results) {
                         if !exists {

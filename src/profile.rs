@@ -79,7 +79,7 @@ pub const PROFILES: &[Profile] = &[
         id: "nix",
         label: "Nix",
         blurb: "nixd, nil, nixfmt, statix, deadnix",
-        packages: &["nixd", "nil", "nixfmt-rfc-style", "statix", "deadnix"],
+        packages: &["nixd", "nil", "statix", "deadnix"],
         env: &[],
     },
     Profile {
@@ -164,9 +164,9 @@ pub const PROFILES: &[Profile] = &[
     },
     Profile {
         id: "terraform",
-        label: "Terraform",
-        blurb: "terraform, terraform-ls, tflint",
-        packages: &["terraform", "terraform-ls", "tflint"],
+        label: "Terraform / OpenTofu",
+        blurb: "opentofu, terraform-ls, tflint",
+        packages: &["opentofu", "terraform-ls", "tflint"],
         env: &[],
     },
     Profile {

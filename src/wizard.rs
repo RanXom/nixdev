@@ -494,14 +494,22 @@ fn packages(out: &Out, plan: &Plan, use_index: bool) -> Result<Vec<String>, Stri
     let system = nix::current_system();
     let mut index: Option<Index> = None;
     let mut live = true;
+
+    let flake = if plan.nixpkgs_url.is_empty() {
+        "nixpkgs".to_string()
+    } else {
+        plan.nixpkgs_url.clone()
+    };
+
     if use_index && !plan.rev.is_empty() {
         if let Some(cached) = index::load(&plan.rev, &system) {
             index = Some(cached);
             live = false;
         } else {
             let rev = plan.rev.clone();
+            let flake_for_index = flake.clone();
             match out.spin("indexing nixpkgs (one time)", || {
-                index::load_or_build(&rev, &system)
+                index::load_or_build(&flake_for_index, &rev, &system)
             }) {
                 Ok(built) => {
                     index = Some(built);
@@ -527,7 +535,7 @@ fn packages(out: &Out, plan: &Plan, use_index: bool) -> Result<Vec<String>, Stri
         if hits.is_empty() {
             let term = query.clone();
             let found = out.spin(&format!("searching nixpkgs for {term}"), || {
-                nix::live_search(&term, Duration::from_secs(300))
+                nix::live_search(&flake, &term, Duration::from_secs(300))
             });
             match found {
                 Ok(entries) => {

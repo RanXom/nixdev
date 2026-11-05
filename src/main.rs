@@ -296,7 +296,7 @@ fn search_inner(args: cli::SearchArgs, out: &Out) -> Result<(), String> {
             entries = index.search(&term, limit).into_iter().cloned().collect();
         } else {
             out.started(&format!("indexing nixpkgs for {system}"));
-            match index::load_or_build(&pinned.rev, &system) {
+            match index::load_or_build(&format!("nixpkgs/{}", pinned.rev), &pinned.rev, &system) {
                 Ok(index) => {
                     out.clear_line();
                     entries = index.search(&term, limit).into_iter().cloned().collect();
@@ -310,7 +310,7 @@ fn search_inner(args: cli::SearchArgs, out: &Out) -> Result<(), String> {
     }
 
     if entries.is_empty() {
-        entries = nix::live_search(&term, Duration::from_secs(300))
+        entries = nix::live_search("nixpkgs", &term, Duration::from_secs(300))
             .map_err(|err| format!("could not search nixpkgs: {err}"))?;
     }
 
@@ -390,7 +390,7 @@ fn index_inner(args: cli::IndexArgs, out: &Out) -> Result<(), String> {
         return Ok(());
     }
     out.started(&format!("indexing nixpkgs for {system}"));
-    let index = index::build(&rev, &system)?;
+    let index = index::build(&format!("nixpkgs/{rev}"), &rev, &system)?;
     let path = index::save(&index)?;
     out.clear_line();
     out.info(&format!(

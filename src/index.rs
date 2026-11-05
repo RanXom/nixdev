@@ -156,8 +156,9 @@ pub fn entry_from_json(attr: String, value: &serde_json::Value) -> Entry {
     }
 }
 
-pub fn build(rev: &str, system: &str) -> Result<Index, String> {
-    let args = nix::nix_args(&["search", "nixpkgs", "^", "--json"]);
+pub fn build(flake: &str, rev: &str, system: &str) -> Result<Index, String> {
+    let args = nix::nix_args(&["search", flake, "^", "--json"]);
+
     let out = nix::run(&nix::nix_bin(), &args, None, Duration::from_secs(900))
         .map_err(|err| format!("could not search nixpkgs: {err}"))?;
     let raw: serde_json::Value = serde_json::from_str(&out.stdout)
@@ -185,11 +186,11 @@ pub fn build(rev: &str, system: &str) -> Result<Index, String> {
     })
 }
 
-pub fn load_or_build(rev: &str, system: &str) -> Result<Index, String> {
+pub fn load_or_build(flake: &str, rev: &str, system: &str) -> Result<Index, String> {
     if let Some(index) = load(rev, system) {
         return Ok(index);
     }
-    let index = build(rev, system)?;
+    let index = build(flake, rev, system)?;
     let _ = save(&index);
     Ok(index)
 }

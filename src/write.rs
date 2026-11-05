@@ -209,7 +209,7 @@ fn counter() -> u64 {
 }
 
 struct DirLock {
-    path: PathBuf,
+    file: fs::File,
 }
 
 impl DirLock {
@@ -227,7 +227,7 @@ impl DirLock {
         let mut waited = Duration::ZERO;
         loop {
             match file.try_lock_exclusive() {
-                Ok(()) => return Ok(Self { path }),
+                Ok(()) => return Ok(Self { file }),
                 Err(_) if waited < Duration::from_secs(3) => {
                     std::thread::sleep(Duration::from_millis(100));
                     waited += Duration::from_millis(100);
@@ -240,9 +240,7 @@ impl DirLock {
 
 impl Drop for DirLock {
     fn drop(&mut self) {
-        if let Ok(file) = fs::File::open(&self.path) {
-            let _ = file.unlock();
-        }
+        let _ = FileExt::unlock(&self.file);
     }
 }
 

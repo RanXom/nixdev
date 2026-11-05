@@ -1,5 +1,6 @@
-use crate::util::valid_attr;
-use crate::util::valid_env_key;
+use unicode_width::UnicodeWidthStr;
+
+use crate::util::{truncate, valid_attr, valid_env_key};
 
 pub const MANAGED_START: &str = "# >>> nixdev:managed >>>";
 pub const MANAGED_END: &str = "# <<< nixdev:managed <<<";
@@ -37,7 +38,10 @@ impl Spec {
                 return Err(format!("invalid system `{system}`"));
             }
         }
-        if self.nixpkgs_url.trim().is_empty() || self.nixpkgs_url.contains('"') {
+        if self.nixpkgs_url.trim().is_empty()
+            || self.nixpkgs_url.contains('"')
+            || self.nixpkgs_url.chars().any(char::is_control)
+        {
             return Err("invalid nixpkgs input url".into());
         }
         for pkg in &self.packages {
@@ -58,7 +62,7 @@ impl Spec {
 }
 
 pub fn render(spec: &Spec) -> String {
-    let mut out = String::with_capacity(4096);
+    let mut out = String::with_capacity(8192);
     let title = if spec.meta.description.trim().is_empty() {
         format!("{} development environment", spec.meta.project)
     } else {
@@ -75,13 +79,16 @@ pub fn render(spec: &Spec) -> String {
 
     out.push_str("  inputs = {\n");
     if !spec.nixpkgs_note.is_empty() {
-        out.push_str(&format!("    # {}\n", spec.nixpkgs_note));
+        out.push_str(&format!("    # {}\n", flat(&spec.nixpkgs_note)));
     }
-    out.push_str(&format!("    nixpkgs.url = \"{}\";\n", spec.nixpkgs_url));
+    out.push_str(&format!(
+        "    nixpkgs.url = \"{}\";\n",
+        escape_string(&spec.nixpkgs_url)
+    ));
     out.push_str("  };\n\n");
 
     out.push_str("  outputs =\n");
-    out.push_str("    { self, nixpkgs }:\n");
+    out.push_str("    { nixpkgs, ... }:\n");
     out.push_str("    let\n");
     out.push_str("      systems = [\n");
     for system in &spec.systems {
@@ -127,66 +134,303 @@ pub fn render(spec: &Spec) -> String {
     out
 }
 
+// ───────────────────────── shell hook ─────────────────────────
+
+/// Inner width of the banner box, in terminal columns.
+const WIDTH: usize = 60;
+
+// Escapes are written for bash `$'…'` strings and use the 256-colour palette,
+// which every modern terminal understands.
+const RST: &str = "\\e[0m";
+const BOLD: &str = "\\e[1m";
+const DIM: &str = "\\e[2m";
+const BOX: &str = "\\e[38;5;60m";
+const ACC: &str = "\\e[38;5;111m";
+const OK: &str = "\\e[38;5;114m";
+const MUTED: &str = "\\e[38;5;245m";
+const TEXT: &str = "\\e[38;5;189m";
+const TITLE: &str = "\\e[1;38;5;189m";
+const HEAD: &str = "\\e[1;38;5;111m";
+const GRADIENT: [u8; 6] = [45, 75, 111, 147, 183, 219];
+
+/// Encode text for a bash `$'…'` string. `$`, `'` and `\` can never reach the
+/// output unescaped, so neither the shell nor Nix can interpret user text.
+fn ansi_c(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for ch in text.chars() {
+        match ch {
+            '\\' => out.push_str("\\\\"),
+            '\'' => out.push_str("\\x27"),
+            '$' => out.push_str("\\x24"),
+            c if c.is_control() => out.push(' '),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+/// One banner row: `segments` are (style, text) pairs, padded to the box width.
+fn row(segments: &[(&str, &str)]) -> String {
+    let avail = WIDTH - 2;
+    let mut used = 0usize;
+    let mut body = String::new();
+    for (style, text) in segments {
+        let text = truncate(text, avail.saturating_sub(used));
+        used += text.width();
+        body.push_str(style);
+        body.push_str(&ansi_c(&text));
+        body.push_str(RST);
+    }
+    let pad = " ".repeat(avail.saturating_sub(used));
+    format!("nd_out $'  {BOX}│{RST}  {body}{pad}{BOX}│{RST}'")
+}
+
+fn top() -> String {
+    let version = format!("v{}", env!("CARGO_PKG_VERSION"));
+    let title: String = "nixdev"
+        .chars()
+        .zip(GRADIENT)
+        .map(|(ch, color)| format!("\\e[1;38;5;{color}m{ch}"))
+        .collect();
+    let used = 2 + 6 + 1 + version.width() + 1;
+    let dashes = "─".repeat(WIDTH.saturating_sub(used));
+    format!("nd_out $'  {BOX}╭─ {title}{RST} {DIM}{version}{RST} {BOX}{dashes}╮{RST}'")
+}
+
+fn bottom() -> String {
+    let dashes = "─".repeat(WIDTH);
+    format!("nd_out $'  {BOX}╰{dashes}╯{RST}'")
+}
+
+fn compact(project: &str, detail: &str) -> String {
+    format!(
+        "nd_out $'  {ACC}◈{RST} {TITLE}{}{RST}  {DIM}{}{RST}'",
+        ansi_c(&truncate(project, 24)),
+        ansi_c(&truncate(detail, 48))
+    )
+}
+
+fn add(sh: &mut String, line: &str) {
+    sh.push_str(line);
+    sh.push('\n');
+}
+
+/// Escape a plain script for a Nix indented (`''…''`) string.
+fn nix_indented(script: &str) -> String {
+    script.replace("''", "'''").replace("${", "''${")
+}
+
 fn shell_hook(spec: &Spec) -> String {
-    let mut out = String::with_capacity(2048);
-    out.push_str("\n            shellHook = ''\n");
-    out.push_str(
-        "              # nixdev: greet interactive shells only; `nix develop -c` stays quiet\n",
-    );
-    out.push_str(
-        "              if [[ $- == *i* ]] && [[ -z \"''${NIXDEV_SHELL_ACTIVE:-}\" ]]; then\n",
-    );
-    out.push_str("                export NIXDEV_SHELL_ACTIVE=1\n\n");
-    out.push_str("                # Mute a fastfetch greeting from the user's shell rc.\n");
-    out.push_str("                nixdev_shim=\"''${TMPDIR:-/tmp}/nixdev-shim-''${USER:-user}\"\n");
-    out.push_str("                mkdir -p \"''$nixdev_shim\"\n");
-    out.push_str("                printf '#!/bin/sh\\nexit 0\\n' > \"''$nixdev_shim/fastfetch\"\n");
-    out.push_str("                chmod +x \"''$nixdev_shim/fastfetch\"\n");
-    out.push_str("                case \":''$PATH:\" in\n");
-    out.push_str("                  *\":''$nixdev_shim:\"*) ;;\n");
-    out.push_str("                  *) export PATH=\"''$nixdev_shim:''$PATH\" ;;\n");
-    out.push_str("                esac\n\n");
-    out.push_str("                # Clean slate, then the nixdev banner.\n");
-    out.push_str("                clear 2>/dev/null || printf '\\033[2J\\033[H'\n");
-    out.push_str("                printf '\\n'\n");
-    out.push_str(
-        "                printf '\\033[38;2;122;162;247m  \u{256d}\u{2500} nixdev \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{256e}\\033[0m\\n'\n",
-    );
-
-    let accent = "\\033[38;2;122;162;247m";
-    let reset = "\\033[0m";
-    let mut rows: Vec<String> = Vec::new();
-    rows.push(format!("\\033[1m{}{}", spec.meta.project, reset));
-    let languages = if spec.meta.languages.is_empty() {
-        "no languages selected".to_string()
+    let project = spec.meta.project.as_str();
+    let description = if spec.meta.description.trim().is_empty() {
+        "development environment"
     } else {
-        spec.meta.languages.join(" \u{00b7} ")
+        spec.meta.description.trim()
     };
-    rows.push(languages);
-    rows.push("type `exit` to leave the shell".to_string());
-    for row in rows {
-        let row = row.replace('\'', "");
-        out.push_str("                printf '");
-        out.push_str(accent);
-        out.push_str("  \u{2502}");
-        out.push_str(reset);
-        out.push_str("  ");
-        out.push_str(&row);
-        out.push_str("\\n'\n");
-    }
-    out.push_str(
-        "                printf '\\033[38;2;122;162;247m  \u{2570}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{256f}\\033[0m\\n'\n",
-    );
-    out.push_str("                printf '\\n'\n");
+    let languages = if spec.meta.languages.is_empty() {
+        "none".to_string()
+    } else {
+        spec.meta.languages.join(" · ")
+    };
+    let systems = spec.systems.join(", ");
+    let shell = if spec.meta.shell.is_empty() {
+        "default"
+    } else {
+        spec.meta.shell.as_str()
+    };
+    let nixpkgs = if spec.nixpkgs_note.is_empty() {
+        spec.nixpkgs_url.as_str()
+    } else {
+        spec.nixpkgs_note.as_str()
+    };
+    let packages = format!("{} packages", spec.packages.len());
 
-    if let Some(shell) = &spec.shell_pkg
-        && let Some(binary) = shell_binary(shell)
+    let mut sh = String::with_capacity(4096);
+    add(
+        &mut sh,
+        "# nixdev: banner and shell hand-off. Runs once, and only for an",
+    );
+    add(
+        &mut sh,
+        "# interactive `nix develop` (never `nix develop -c ...` or direnv).",
+    );
+    add(
+        &mut sh,
+        r#"if [[ $- == *i* && -t 0 && -t 1 && -z "${NIXDEV_SHELL_ACTIVE:-}" ]]; then"#,
+    );
+    add(&mut sh, "  export NIXDEV_SHELL_ACTIVE=1");
+    add(&mut sh, "");
+    add(
+        &mut sh,
+        "  # Honour NO_COLOR and dumb terminals by stripping SGR codes at print time.",
+    );
+    add(&mut sh, "  nd_plain=");
+    add(
+        &mut sh,
+        r#"  if [[ -n "${NO_COLOR:-}" || "${TERM:-dumb}" == dumb ]]; then nd_plain=1; fi"#,
+    );
+    add(&mut sh, "  nd_out() {");
+    add(&mut sh, r#"    local s="$1" re=$'\033\\[[0-9;]*m'"#);
+    add(&mut sh, r#"    if [[ -n "$nd_plain" ]]; then"#);
+    add(
+        &mut sh,
+        r#"      while [[ "$s" =~ $re ]]; do s="${s//"${BASH_REMATCH[0]}"/}"; done"#,
+    );
+    add(&mut sh, "    fi");
+    add(&mut sh, r#"    printf '%s\n' "$s""#);
+    add(&mut sh, "  }");
+    add(&mut sh, "");
+    add(
+        &mut sh,
+        r#"  if [[ -z "${NIXDEV_NO_CLEAR:-}" ]]; then printf '\033[2J\033[H'; fi"#,
+    );
+    add(&mut sh, "");
+    add(
+        &mut sh,
+        r#"  nd_cols=$(stty size 2>/dev/null | cut -d' ' -f2)"#,
+    );
+    add(&mut sh, r#"  [[ "$nd_cols" =~ ^[0-9]+$ ]] || nd_cols=80"#);
+    add(&mut sh, r#"  printf '\n'"#);
+    add(&mut sh, "  if (( nd_cols >= 66 )); then");
+    add(&mut sh, &format!("    {}", top()));
+    add(&mut sh, &format!("    {}", row(&[])));
+    add(
+        &mut sh,
+        &format!("    {}", row(&[(ACC, "◈  "), (TITLE, project)])),
+    );
+    add(
+        &mut sh,
+        &format!("    {}", row(&[(DIM, "   "), (DIM, description)])),
+    );
+    add(&mut sh, &format!("    {}", row(&[])));
+    add(&mut sh, &format!("    {}", row(&[(HEAD, "ENVIRONMENT")])));
+    add(
+        &mut sh,
+        &format!(
+            "    {}",
+            row(&[
+                (BOX, "├─ "),
+                (MUTED, "system    "),
+                (TEXT, systems.as_str())
+            ])
+        ),
+    );
+    add(
+        &mut sh,
+        &format!(
+            "    {}",
+            row(&[(BOX, "├─ "), (MUTED, "nixpkgs   "), (TEXT, nixpkgs)])
+        ),
+    );
+    add(
+        &mut sh,
+        &format!(
+            "    {}",
+            row(&[(BOX, "└─ "), (MUTED, "shell     "), (TEXT, shell)])
+        ),
+    );
+    add(&mut sh, &format!("    {}", row(&[])));
+    add(&mut sh, &format!("    {}", row(&[(HEAD, "TOOLCHAIN")])));
+    add(
+        &mut sh,
+        &format!(
+            "    {}",
+            row(&[
+                (BOX, "├─ "),
+                (MUTED, "languages "),
+                (TEXT, languages.as_str())
+            ])
+        ),
+    );
+    add(
+        &mut sh,
+        &format!(
+            "    {}",
+            row(&[
+                (BOX, "└─ "),
+                (MUTED, "packages  "),
+                (TEXT, packages.as_str())
+            ])
+        ),
+    );
+    add(&mut sh, &format!("    {}", row(&[])));
+    add(&mut sh, &format!("    {}", bottom()));
+    add(&mut sh, "  else");
+    add(
+        &mut sh,
+        &format!(
+            "    {}",
+            compact(project, &format!("{shell} · {languages}"))
+        ),
+    );
+    add(&mut sh, "  fi");
+    add(
+        &mut sh,
+        &format!(
+            "  nd_out $'\\n  {OK}●{RST} {BOLD}development shell ready{RST}  {DIM}· type exit to leave{RST}\\n'"
+        ),
+    );
+    add(&mut sh, "");
+    add(&mut sh, "  unset -f nd_out");
+    add(&mut sh, "  unset nd_plain nd_cols");
+
+    if let Some(pkg) = &spec.shell_pkg
+        && let Some(binary) = shell_binary(pkg)
+        && pkg != "bashInteractive"
     {
-        out.push_str(&format!(
-            "                exec ${{pkgs.{shell}}}/bin/{binary}\n"
-        ));
+        add(&mut sh, "");
+        add(
+            &mut sh,
+            "  # Hand over to the selected shell. SHELL is exported because `nix develop`",
+        );
+        add(
+            &mut sh,
+            "  # leaves it pointing at bash, which confuses tmux, editors and new tabs.",
+        );
+        add(&mut sh, r#"  nd_bin="@SHELL_BIN@""#);
+        add(&mut sh, r#"  if [[ -x "$nd_bin" ]]; then"#);
+        add(&mut sh, r#"    export SHELL="$nd_bin""#);
+        add(&mut sh, "    nd_args=()");
+        if binary == "fish" {
+            add(
+                &mut sh,
+                "    # Replace a user-defined fish_greeting after config.fish has loaded.",
+            );
+            add(&mut sh, r#"    if [[ -z "${NIXDEV_GREETING:-}" ]]; then"#);
+            add(
+                &mut sh,
+                "      nd_args=(--init-command 'function fish_greeting; end')",
+            );
+            add(&mut sh, "    fi");
+        }
+        add(&mut sh, r#"    exec "$nd_bin" "${nd_args[@]}""#);
+        add(&mut sh, "  fi");
+        add(
+            &mut sh,
+            r#"  printf 'nixdev: %s is not available; staying in bash\n' "$nd_bin" >&2"#,
+        );
     }
-    out.push_str("              fi\n");
+    add(&mut sh, "fi");
+
+    let escaped = match (
+        &spec.shell_pkg,
+        spec.shell_pkg.as_deref().and_then(shell_binary),
+    ) {
+        (Some(pkg), Some(binary)) => {
+            nix_indented(&sh).replace("@SHELL_BIN@", &format!("${{pkgs.{pkg}}}/bin/{binary}"))
+        }
+        _ => nix_indented(&sh),
+    };
+
+    let mut out = String::with_capacity(escaped.len() + 256);
+    out.push_str("\n            shellHook = ''\n");
+    for line in escaped.lines() {
+        if !line.is_empty() {
+            out.push_str("              ");
+            out.push_str(line);
+        }
+        out.push('\n');
+    }
     out.push_str("            '';\n");
     out
 }
@@ -213,12 +457,16 @@ fn header(spec: &Spec, title: &str) -> String {
     out
 }
 
-fn one_line(text: &str) -> String {
+fn flat(text: &str) -> String {
     let flat: String = text
         .chars()
         .map(|c| if c.is_control() { ' ' } else { c })
         .collect();
-    crate::util::truncate(flat.trim(), 68)
+    flat.trim().to_string()
+}
+
+fn one_line(text: &str) -> String {
+    truncate(&flat(text), 68)
 }
 
 fn shell_binary(shell: &str) -> Option<&'static str> {
@@ -308,10 +556,10 @@ mod tests {
                 description: "demo shell".into(),
                 languages: vec!["rust".into()],
                 shell: "fish".into(),
-                generated: "2026-11-04".into(),
+                generated: "2026-11-05".into(),
             },
             nixpkgs_url: "github:NixOS/nixpkgs/abc123".into(),
-            nixpkgs_note: "nixos-unstable as of 2026-11-04".into(),
+            nixpkgs_note: "nixos-unstable pinned on 2026-11-05".into(),
             systems: vec!["x86_64-linux".into()],
             packages: vec!["cargo".into(), "rust-analyzer".into()],
             env: vec![(
@@ -327,10 +575,30 @@ mod tests {
         let text = render(&sample());
         assert!(text.contains("description = \"demo shell\""));
         assert!(text.contains(MANAGED_START));
-        assert!(text.contains("exec ${pkgs.fish}/bin/fish"));
+        assert!(text.contains("nd_bin=\"${pkgs.fish}/bin/fish\""));
+        assert!(text.contains("exec \"$nd_bin\""));
         assert!(text.contains("''${NIXDEV_SHELL_ACTIVE:-}"));
+        assert!(text.contains("--init-command 'function fish_greeting; end'"));
         assert!(text.contains("RUST_SRC_PATH = \"${pkgs.rustPlatform.rustLibSrc}\";"));
+        assert!(!text.contains("mktemp"), "the PATH shim must be gone");
         assert_eq!(text.matches('{').count(), text.matches('}').count());
+    }
+
+    #[test]
+    fn hook_only_runs_for_interactive_sessions() {
+        let text = render(&sample());
+        assert!(text.contains("$- == *i* && -t 0 && -t 1"));
+    }
+
+    #[test]
+    fn bash_and_none_do_not_exec() {
+        let mut spec = sample();
+        spec.meta.shell = "bash".into();
+        spec.shell_pkg = Some(shell_package("bash").unwrap().to_string());
+        assert!(!render(&spec).contains("exec "));
+        spec.meta.shell = "none".into();
+        spec.shell_pkg = None;
+        assert!(!render(&spec).contains("exec "));
     }
 
     #[test]
@@ -343,6 +611,46 @@ mod tests {
     }
 
     #[test]
+    fn hostile_text_never_reaches_nix_or_the_shell() {
+        let mut spec = sample();
+        spec.meta.description = "it's ${pkgs.hello} ''x $(id) `id` \\ \"q\"".into();
+        spec.meta.project = "pro'ject".into();
+        spec.nixpkgs_note = "note ${pkgs.hello}\nnewline".into();
+        let text = render(&spec);
+        for line in text.lines().filter(|l| l.contains("nd_out $'")) {
+            assert!(!line.contains("${"), "interpolation leaked: {line}");
+            assert!(!line.contains("''"), "nix string terminator leaked: {line}");
+            assert!(!line.contains("$("), "command substitution leaked: {line}");
+        }
+        assert!(!text.contains("note ${pkgs.hello}\nnewline"));
+    }
+
+    #[test]
+    fn banner_rows_share_one_width() {
+        let widths: Vec<usize> = [row(&[]), row(&[(ACC, "◈  "), (TITLE, "project")])]
+            .iter()
+            .map(|r| {
+                let body = r.trim_start_matches("nd_out $'").trim_end_matches('\'');
+                let mut plain = String::new();
+                let mut chars = body.chars().peekable();
+                while let Some(c) = chars.next() {
+                    if c == '\\' && chars.peek() == Some(&'e') {
+                        for n in chars.by_ref() {
+                            if n == 'm' {
+                                break;
+                            }
+                        }
+                    } else {
+                        plain.push(c);
+                    }
+                }
+                plain.width()
+            })
+            .collect();
+        assert_eq!(widths[0], widths[1]);
+    }
+
+    #[test]
     fn rejects_bad_specs() {
         let mut spec = sample();
         spec.packages.push("foo [".into());
@@ -350,6 +658,10 @@ mod tests {
 
         let mut spec = sample();
         spec.systems.clear();
+        assert!(spec.validate().is_err());
+
+        let mut spec = sample();
+        spec.nixpkgs_url = "github:a/b\nc".into();
         assert!(spec.validate().is_err());
     }
 
