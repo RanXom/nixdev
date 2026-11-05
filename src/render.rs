@@ -138,13 +138,9 @@ fn shell_hook(spec: &Spec) -> String {
     );
     out.push_str("                export NIXDEV_SHELL_ACTIVE=1\n\n");
     out.push_str("                # Mute a fastfetch greeting from the user's shell rc.\n");
-    out.push_str(
-        "                nixdev_shim=\"''${TMPDIR:-/tmp}/nixdev-shim-''${USER:-user}\"\n",
-    );
+    out.push_str("                nixdev_shim=\"''${TMPDIR:-/tmp}/nixdev-shim-''${USER:-user}\"\n");
     out.push_str("                mkdir -p \"''$nixdev_shim\"\n");
-    out.push_str(
-        "                printf '#!/bin/sh\\nexit 0\\n' > \"''$nixdev_shim/fastfetch\"\n",
-    );
+    out.push_str("                printf '#!/bin/sh\\nexit 0\\n' > \"''$nixdev_shim/fastfetch\"\n");
     out.push_str("                chmod +x \"''$nixdev_shim/fastfetch\"\n");
     out.push_str("                case \":''$PATH:\" in\n");
     out.push_str("                  *\":''$nixdev_shim:\"*) ;;\n");

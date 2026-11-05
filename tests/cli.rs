@@ -25,6 +25,13 @@ fn version_is_available() {
 }
 
 #[test]
+fn short_version_flag_works() {
+    let output = bin().arg("-v").output().unwrap();
+    assert!(output.status.success());
+    assert!(String::from_utf8_lossy(&output.stdout).contains("nixdev"));
+}
+
+#[test]
 fn prompts_need_a_terminal() {
     let dir = scratch("tty");
     let output = bin()

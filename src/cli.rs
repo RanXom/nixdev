@@ -24,7 +24,7 @@ pub struct Cli {
     pub no_color: bool,
 
     /// Print version information
-    #[arg(short = 'v', long = "version", action = clap::ArgAction::Version)]
+    #[arg(short = 'v', long = "version")]
     pub version: bool,
 }
 

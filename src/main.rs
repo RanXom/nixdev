@@ -30,6 +30,10 @@ fn main() {
 
 fn real_main() -> i32 {
     let cli = Cli::parse();
+    if cli.version {
+        println!("nixdev {}", env!("CARGO_PKG_VERSION"));
+        return 0;
+    }
     let mode = ColorMode::detect(cli.no_color);
     let out = Out::new(mode);
     let command = match (cli.dir, cli.command) {
